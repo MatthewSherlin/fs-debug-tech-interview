@@ -1,0 +1,9 @@
+node_modules/
+.DS_Store
+.env
+
+# Interview guide (contains answer key)
+INTERVIEW_GUIDE.md
+
+# Working version (contains all fixes — interviewer reference only)
+working-version/

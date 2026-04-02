@@ -10,11 +10,9 @@ const ProductList = ({ products, loading, onSync, onDelete }) => {
 
     setSyncingStates({ [key]: true });
 
-    
     onSync(platform, productId).then(() => {
       setSyncingStates({ [key]: false });
     });
-
   }, [onSync]);
 
   const handleDelete = useCallback((productId) => {
@@ -43,12 +41,12 @@ const ProductList = ({ products, loading, onSync, onDelete }) => {
 
       {products.length === 0 ? (
         <div className="empty-state">
-          <p>No products yet. Add your first product!</p>
+          <p>No products yet. Add your first product to get started.</p>
         </div>
       ) : (
         <div className="products-grid">
           {products.map(product => (
-            <div key={product.id} className="product-item">
+            <div key={product.id} className="product-card">
               <div className="product-header">
                 <div className="product-info">
                   <h3>{product.name}</h3>
@@ -76,7 +74,7 @@ const ProductList = ({ products, loading, onSync, onDelete }) => {
               <p className="product-description">{product.description}</p>
 
               <div className="sync-section">
-                <h4>Platform Sync Status</h4>
+                <h4>Platform Sync</h4>
                 <div className="sync-platforms">
                   {['shopify', 'tiktok', 'instagram'].map(platform => (
                     <SyncStatus

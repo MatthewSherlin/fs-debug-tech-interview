@@ -1,3 +1,29 @@
 {
-  "products": []
+  "products": [
+    {
+      "id": "7ea4cef3-5b2a-4c66-900f-4185421c0551",
+      "name": "Second Product",
+      "price": 49.99,
+      "description": "This is product number two",
+      "category": "Electronics",
+      "syncStatus": {
+        "shopify": {
+          "status": "pending",
+          "error": null,
+          "lastSync": null
+        },
+        "tiktok": {
+          "status": "pending",
+          "error": null,
+          "lastSync": null
+        },
+        "instagram": {
+          "status": "pending",
+          "error": null,
+          "lastSync": null
+        }
+      },
+      "createdAt": "2026-04-01T16:45:30.117Z"
+    }
+  ]
 }

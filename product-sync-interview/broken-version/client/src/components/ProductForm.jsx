@@ -1,34 +1,33 @@
 import React, { useState } from 'react';
 import axios from 'axios';
 
+const CATEGORIES = [
+  'Electronics',
+  'Clothing',
+  'Home & Garden',
+  'Sports & Outdoors',
+  'Books',
+  'Toys & Games',
+  'Health & Beauty',
+  'Food & Beverages',
+];
+
+const INITIAL_FORM = {
+  name: '',
+  price: '',
+  description: '',
+  category: 'Electronics',
+};
+
 const ProductForm = ({ onProductAdded, apiBase }) => {
-  const [formData, setFormData] = useState({
-    name: '',
-    price: '',
-    description: '',
-    category: 'Electronics'
-  });
+  const [formData, setFormData] = useState(INITIAL_FORM);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(false);
 
-  const categories = [
-    'Electronics',
-    'Clothing',
-    'Home & Garden',
-    'Sports & Outdoors',
-    'Books',
-    'Toys & Games',
-    'Health & Beauty',
-    'Food & Beverages'
-  ];
-
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
+    setFormData(prev => ({ ...prev, [name]: value }));
     setError(null);
     setSuccess(false);
   };
@@ -55,16 +54,11 @@ const ProductForm = ({ onProductAdded, apiBase }) => {
     try {
       const response = await axios.post(`${apiBase}/products`, {
         ...formData,
-        price
+        price,
       });
 
       onProductAdded(response.data);
-      setFormData({
-        name: '',
-        price: '',
-        description: '',
-        category: 'Electronics'
-      });
+      setFormData(INITIAL_FORM);
       setSuccess(true);
       setTimeout(() => setSuccess(false), 3000);
     } catch (err) {
@@ -116,7 +110,7 @@ const ProductForm = ({ onProductAdded, apiBase }) => {
             onChange={handleChange}
             disabled={loading}
           >
-            {categories.map(cat => (
+            {CATEGORIES.map(cat => (
               <option key={cat} value={cat}>{cat}</option>
             ))}
           </select>
@@ -137,11 +131,7 @@ const ProductForm = ({ onProductAdded, apiBase }) => {
         {error && <div className="error-message">{error}</div>}
         {success && <div className="success-message">Product added successfully!</div>}
 
-        <button
-          type="submit"
-          className="btn btn-primary"
-          disabled={loading}
-        >
+        <button type="submit" className="btn btn-primary" disabled={loading}>
           {loading ? 'Adding...' : 'Add Product'}
         </button>
       </form>

@@ -1,38 +1,29 @@
 import React from 'react';
 
+const PLATFORM_NAMES = {
+  shopify: 'Shopify',
+  tiktok: 'TikTok Shop',
+  instagram: 'Instagram Shop',
+};
+
 const SyncStatus = ({ platform, status, onSync, isSyncing }) => {
-  const getPlatformDisplayName = () => {
-    const names = {
-      shopify: 'Shopify',
-      tiktok: 'TikTok Shop',
-      instagram: 'Instagram Shop'
-    };
-    return names[platform] || platform;
-  };
+  const statusLabel = isSyncing
+    ? 'Syncing...'
+    : status.status.charAt(0).toUpperCase() + status.status.slice(1);
 
-  const getStatusClass = () => {
-    if (isSyncing) return 'status-syncing';
-    return `status-${status.status}`;
-  };
-
-  const getStatusText = () => {
-    if (isSyncing) return 'Syncing...';
-    return status.status.charAt(0).toUpperCase() + status.status.slice(1);
-  };
+  const statusClass = isSyncing ? 'status-syncing' : `status-${status.status}`;
 
   const formatDate = (dateString) => {
-    if (!dateString) return 'Never';
-    const date = new Date(dateString);
-    return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
+    if (!dateString) return null;
+    const d = new Date(dateString);
+    return d.toLocaleDateString() + ' ' + d.toLocaleTimeString();
   };
 
   return (
     <div className="platform-sync">
       <div className="platform-header">
-        <span className="platform-name">{getPlatformDisplayName()}</span>
-        <span className={`sync-status ${getStatusClass()}`}>
-          {getStatusText()}
-        </span>
+        <span className="platform-name">{PLATFORM_NAMES[platform] || platform}</span>
+        <span className={`sync-status ${statusClass}`}>{statusLabel}</span>
       </div>
 
       {status.error && !isSyncing && (
@@ -40,20 +31,14 @@ const SyncStatus = ({ platform, status, onSync, isSyncing }) => {
       )}
 
       {status.lastSync && (
-        <div className="last-sync">
-          Last sync: {formatDate(status.lastSync)}
-        </div>
+        <div className="last-sync">Last sync: {formatDate(status.lastSync)}</div>
       )}
 
       <div className="platform-actions">
-        <button
-          className="btn btn-sync"
-          onClick={onSync}
-          disabled={isSyncing}
-        >
+        <button className="btn btn-sync" onClick={onSync} disabled={isSyncing}>
           {isSyncing ? (
             <>
-              <span className="loading" style={{ marginRight: '5px' }}></span>
+              <span className="loading" style={{ marginRight: 5 }}></span>
               Syncing
             </>
           ) : (

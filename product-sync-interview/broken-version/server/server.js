@@ -1,25 +1,20 @@
 const express = require('express');
 const cors = require('cors');
-const bodyParser = require('body-parser');
 const fs = require('fs').promises;
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 
 const app = express();
-const PORT = 5000;
+const PORT = 8000;
 
 app.use(cors());
-app.use(bodyParser.json());
+app.use(express.json());
+
+// ---------------------------------------------------------------------------
+// Database (flat JSON file)
+// ---------------------------------------------------------------------------
 
 const DB_PATH = path.join(__dirname, 'products.json');
-
-let tiktokRequestCount = 0;
-let tiktokResetTime = Date.now();
-const TIKTOK_RATE_LIMIT = 3;
-const TIKTOK_RESET_INTERVAL = 60000;
-
-let instagramTokens = new Map();
-const INSTAGRAM_TOKEN_EXPIRY = 1 * 60 * 1000;
 
 async function ensureDatabase() {
   try {
@@ -30,32 +25,47 @@ async function ensureDatabase() {
 }
 
 async function readDatabase() {
-  try {
-    const data = await fs.readFile(DB_PATH, 'utf8');
-    return JSON.parse(data);
-  } catch (error) {
-    return { products: [] };
-  }
+  const data = await fs.readFile(DB_PATH, 'utf8');
+  return JSON.parse(data);
 }
 
 async function writeDatabase(data) {
   await fs.writeFile(DB_PATH, JSON.stringify(data, null, 2));
 }
 
+// ---------------------------------------------------------------------------
+// Instagram token management
+// ---------------------------------------------------------------------------
+
+const instagramTokens = new Map();
+const INSTAGRAM_TOKEN_EXPIRY = 5 * 60 * 1000; // 5 minutes
+
 function generateInstagramToken() {
-  const token = `instagram_token_${Date.now()}`;
+  const token = `ig_${uuidv4()}`;
   instagramTokens.set(token, Date.now());
   return token;
 }
 
 function isInstagramTokenValid(token) {
-  if (!token || !instagramTokens.has(token)) {
-    return false;
-  }
-  const tokenTime = instagramTokens.get(token);
-  return (Date.now() - tokenTime) < INSTAGRAM_TOKEN_EXPIRY;
+  if (!token || !instagramTokens.has(token)) return false;
+  const issued = instagramTokens.get(token);
+  return (Date.now() - issued) < INSTAGRAM_TOKEN_EXPIRY;
 }
 
+// ---------------------------------------------------------------------------
+// TikTok rate limiting
+// ---------------------------------------------------------------------------
+
+let tiktokRequestCount = 0;
+let tiktokWindowStart = Date.now();
+const TIKTOK_RATE_LIMIT = 10;
+const TIKTOK_WINDOW_MS = 60_000;
+
+// ---------------------------------------------------------------------------
+// Routes
+// ---------------------------------------------------------------------------
+
+// List all products
 app.get('/api/products', async (req, res) => {
   try {
     const db = await readDatabase();
@@ -65,6 +75,7 @@ app.get('/api/products', async (req, res) => {
   }
 });
 
+// Create a product
 app.post('/api/products', async (req, res) => {
   try {
     const { name, price, description, category } = req.body;
@@ -82,9 +93,9 @@ app.post('/api/products', async (req, res) => {
       syncStatus: {
         shopify: { status: 'pending', error: null, lastSync: null },
         tiktok: { status: 'pending', error: null, lastSync: null },
-        instagram: { status: 'pending', error: null, lastSync: null }
+        instagram: { status: 'pending', error: null, lastSync: null },
       },
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
     };
 
     const db = await readDatabase();
@@ -97,6 +108,7 @@ app.post('/api/products', async (req, res) => {
   }
 });
 
+// Sync a product to a platform
 app.post('/api/sync/:platform/:productId', async (req, res) => {
   try {
     const { platform, productId } = req.params;
@@ -107,43 +119,41 @@ app.post('/api/sync/:platform/:productId', async (req, res) => {
       return res.status(404).json({ error: 'Product not found' });
     }
 
-    let syncResult;
+    let result;
     switch (platform) {
       case 'shopify':
-        syncResult = await syncToShopify(product);
+        result = await syncToShopify(product);
         break;
       case 'tiktok':
-        syncResult = await syncToTikTok(product);
+        result = await syncToTikTok(product);
         break;
       case 'instagram':
-        syncResult = await syncToInstagram(product, req.body.token);
+        result = await syncToInstagram(product, req.body.token);
         break;
       default:
-        return res.status(400).json({ error: 'Invalid platform' });
+        return res.status(400).json({ error: `Unsupported platform: ${platform}` });
     }
 
     product.syncStatus[platform] = {
-      status: syncResult.success ? 'success' : 'failed',
-      error: syncResult.error || null,
-      lastSync: syncResult.success ? new Date().toISOString() : product.syncStatus[platform].lastSync
+      status: result.success ? 'success' : 'failed',
+      error: result.error || null,
+      lastSync: result.success
+        ? new Date().toISOString()
+        : product.syncStatus[platform].lastSync,
     };
 
     await writeDatabase(db);
-    res.json({
-      success: syncResult.success,
-      data: syncResult.data,
-      error: syncResult.error
-    });
+    res.json(result);
   } catch (error) {
     res.status(500).json({ error: 'Sync failed', message: error.message });
   }
 });
 
+// Delete a product
 app.delete('/api/products/:productId', async (req, res) => {
   try {
     const { productId } = req.params;
     const db = await readDatabase();
-
     const productIndex = db.products.findIndex(p => p.id === productId);
 
     if (productIndex === -1) {
@@ -151,110 +161,102 @@ app.delete('/api/products/:productId', async (req, res) => {
     }
 
     db.products.splice(0, 1);
-
     await writeDatabase(db);
 
-    res.json({
-      success: true,
-      message: 'Product deleted successfully'
-    });
+    res.json({ success: true, message: 'Product deleted successfully' });
   } catch (error) {
-    res.status(500).json({ error: 'Failed to delete product', message: error.message });
+    res.status(500).json({ error: 'Failed to delete product' });
   }
 });
 
+// Generate an Instagram auth token
+app.post('/api/instagram/token', (_req, res) => {
+  const token = generateInstagramToken();
+  res.json({ token, expiresIn: INSTAGRAM_TOKEN_EXPIRY });
+});
+
+// Reset product database (for between interviews)
+app.post('/api/products/reset', async (_req, res) => {
+  await writeDatabase({ products: [] });
+  res.json({ message: 'All products cleared' });
+});
+
+// ---------------------------------------------------------------------------
+// Platform sync functions
+// ---------------------------------------------------------------------------
+
 async function syncToShopify(product) {
-  await new Promise(resolve => setTimeout(resolve, 1200));
+  await new Promise(resolve => setTimeout(resolve, 800));
 
-  const priceToSend = product.price.toString();
+  const payload = {
+    title: product.name,
+    price: product.price.toString(),
+    description: product.description,
+    category: product.category,
+  };
 
-  const mockShopifyResponse = await mockShopifyAPI({
-    ...product,
-    price: priceToSend
-  });
+  const response = await mockShopifyAPI(payload);
 
-  if (!mockShopifyResponse.success) {
-    return {
-      success: false,
-      error: mockShopifyResponse.error
-    };
+  if (!response.success) {
+    return { success: false, error: response.error };
   }
 
   return {
     success: true,
-    data: {
-      shopifyId: `shopify_${product.id}`,
-      message: 'Product synced to Shopify successfully'
-    }
+    data: { shopifyId: `shp_${product.id}`, message: 'Synced to Shopify' },
   };
 }
 
-async function mockShopifyAPI(productData) {
-  if (typeof productData.price !== 'number') {
-    return {
-      success: false,
-      error: 'Invalid data type: price must be a number'
-    };
+async function mockShopifyAPI(data) {
+  if (typeof data.price !== 'number') {
+    return { success: false, error: 'Invalid data type: price must be a number' };
   }
   return { success: true };
 }
 
 async function syncToTikTok(product) {
-  await new Promise(resolve => setTimeout(resolve, 1500));
+  await new Promise(resolve => setTimeout(resolve, 1000));
 
-  if (Date.now() - tiktokResetTime > TIKTOK_RESET_INTERVAL) {
+  if (Date.now() - tiktokWindowStart > TIKTOK_WINDOW_MS) {
     tiktokRequestCount = 0;
-    tiktokResetTime = Date.now();
+    tiktokWindowStart = Date.now();
   }
 
   if (tiktokRequestCount >= TIKTOK_RATE_LIMIT) {
-    return {
-      success: false,
-      error: 'Rate limit exceeded'
-    };
+    const retryIn = Math.ceil(
+      (TIKTOK_WINDOW_MS - (Date.now() - tiktokWindowStart)) / 1000
+    );
+    return { success: false, error: `Rate limit exceeded. Retry in ${retryIn}s` };
   }
 
   tiktokRequestCount++;
   return {
     success: true,
-    data: {
-      tiktokId: `tiktok_${product.id}`,
-      message: 'Product synced to TikTok successfully'
-    }
+    data: { tiktokId: `tt_${product.id}`, message: 'Synced to TikTok Shop' },
   };
 }
 
 async function syncToInstagram(product, token) {
-  await new Promise(resolve => setTimeout(resolve, 1000));
+  await new Promise(resolve => setTimeout(resolve, 600));
 
   if (!isInstagramTokenValid(token)) {
     return {
       success: false,
-      error: 'Authentication failed: Token expired or invalid'
+      error: 'Authentication failed: token expired or invalid',
     };
   }
 
   return {
     success: true,
-    data: {
-      instagramId: `instagram_${product.id}`,
-      message: 'Product synced to Instagram successfully'
-    }
+    data: { instagramId: `ig_${product.id}`, message: 'Synced to Instagram Shop' },
   };
 }
 
-app.post('/api/tiktok/reset', async (req, res) => {
-  tiktokRequestCount = 0;
-  tiktokResetTime = Date.now();
-  res.json({ message: 'TikTok rate limit reset' });
-});
-
-app.post('/api/instagram/token', async (req, res) => {
-  const token = generateInstagramToken();
-  res.json({ token, expiresIn: INSTAGRAM_TOKEN_EXPIRY });
-});
+// ---------------------------------------------------------------------------
+// Start
+// ---------------------------------------------------------------------------
 
 app.listen(PORT, async () => {
   await ensureDatabase();
-  console.log(`Server running on port ${PORT}`);
+  console.log(`Server running on http://localhost:${PORT}`);
 });
